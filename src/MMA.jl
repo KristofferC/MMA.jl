@@ -6,29 +6,24 @@ import Base: min, max
 
 export MMAModel, box!, ineq_constraint!, objective, dim, solve, constraint
 
-
+include("checks.jl")
 
 immutable MMAModel
     dim::Int
-    objective::Function # Should return g(x), δg(x)/δx
+    objective::Function
     ineq_constraints::Vector{Function}
     box_max::Vector{Float64}
     box_min::Vector{Float64}
-    max_iters::Int
-    store_f_history::Bool
-    store_x_history::Bool
-    #stopval::Float64
-    #ftol_rel::Float64
-    #ftol_abs::Float64
-    #xtol_abs::Float64
-    #xtol_rel::Float64
-end
 
-immutable MMAResults
-    n_iters::Int
-    obj_value::Float64
-    f_history::Vector{Float64}
-    x_history::Vector{Float64}
+    # Store criterias
+    store_obj::Bool
+    store_x::Bool
+    store_λ::Bool
+
+    # Stopping criterias
+    max_iters::Int
+    ftol::Float64
+    xtol::Float64
 end
 
 dim(m::MMAModel) = m.dim
@@ -40,12 +35,62 @@ objective(m::MMAModel) = m.objective
 constraint(m::MMAModel) = m.ineq_constraints
 constraint(m::MMAModel, i::Int) = m.ineq_constraints[i]
 eval_objective(m, g0, ∇g0) = m.objective(g0, ∇g0)
-eval_constraint(m, i, g0, ∇g0) = m.box_constraints[i](g0, ∇g0)
+eval_constraint(m, i, g0, ∇g0) = constraint(m, i)(g0, ∇g0)
+ftol(m) = m.ftol
+xtol(m) = m.xtol
 
-function MMAModel(dim::Int, objective::Function; max_iters=30)
-    mins = zeros(dim)
-    maxs = ones(dim) * Inf
-    MMAModel(dim, objective, Vector{Function}(), mins, maxs, max_iters,false, false)
+function MMAModel(dim::Int,
+                  objective::Function;
+                  max_iters=200,
+                  xtol::Float64 = eps(Float64),
+                  ftol::Float64 = sqrt(eps(Float64)),
+                  store_obj::Bool = false,
+                  store_x::Bool = false,
+                  store_λ::Bool = false)
+
+    # TODO: Is this a good idea:
+    mins = NaN * ones(dim)
+    maxs = NaN * ones(dim)
+    MMAModel(dim, objective, Function[],
+             mins, maxs, store_obj, store_x, store_λ,
+             max_iters, ftol, xtol)
+end
+
+type MMAResults
+    n_iters::Int
+    x0::Vector{Float64}
+    obj_value::Float64
+    minimum::Vector{Float64}
+    f_history::Vector{Float64}
+    x_history::Vector{Vector{Float64}}
+    λ_history::Vector{Vector{Float64}}
+
+    xtol::Float64
+    ftol::Float64
+
+    # Reason for stopping
+    stopped_max_iter::Bool
+    stopped_ftol::Bool
+    stopped_xtol::Bool
+end
+
+function MMAResults(m, x)
+    MMAResults(0, copy(x), NaN, Float64[], Float64[],
+                          Array{Array{Float64,1}, 1}[], Array{Array{Float64,1}, 1}[],
+                          xtol(m), ftol(m),
+                          false, false, false)
+end
+
+function Base.show(io::IO, r::MMAResults)
+    @printf io "Results of MMA Algorithm\n"
+    @printf io " * Starting Point: [%s]\n" join(r.x0, ",")
+    @printf io " * Minimum: [%s]\n" join(r.minimum, ",")
+    @printf io " * Value of Function at Minimum: %f\n" r.obj_value
+    @printf io " * Iterations: %d\n" r.n_iters
+    @printf io " * Convergence: %s\n" r.stopped_ftol || r.stopped_xtol
+    @printf io "   * |x - x'| < %.1e: %s\n" r.xtol r.stopped_xtol
+    @printf io "   * |f(x) - f(x')| / |f(x)| < %.1e: %s\n" r.ftol r.stopped_ftol
+    return
 end
 
 # Box constraints
@@ -79,20 +124,52 @@ function ineq_constraint!(m::MMAModel, f::Function)
 end
 
 function solve(m::MMAModel, x::Vector{Float64})
-    error_check(m, x)
+    check_error(m, x)
     n_i = length(constraint(m))
     n_j = dim(m)
-
+    x_k1 = copy(x)
+    x_k2 = copy(x)
+    α = zeros(dim(m))
+    β = zeros(dim(m))
     L = zeros(dim(m))
-    U = 10 * m.box_max
-    α = 0.9 * L + 0.1 * x
-    β = 0.9 * U + 0.1 * x
-    #update_L_U!(L, U, m, k, x, prev_x)
-
+    U = zeros(dim(m))
     n_ineqs = length(m.ineq_constraints)
+    ∇fi = zeros(dim(m))
+    ri = 0.0
 
-    for k = 1:3
-        ∇fi = zeros(dim(m))
+    mma_results = MMAResults(m, x)
+
+
+    # For box search
+    λ = ones(n_ineqs)
+    l = zeros(n_ineqs)
+    u = Inf * ones(n_ineqs)
+
+    mma_results.n_iters = 0
+    while true
+        mma_results.n_iters += 1
+        k = mma_results.n_iters
+        ri = eval_objective(m, x, ∇fi)
+        mma_results.obj_value = ri
+        mma_results.minimum = x
+        # Check convergence.
+        # TODO: Refactor into it's own function
+        if k > 1
+            if k >= m.max_iters
+                mma_results.stopped_max_iter = true
+                return mma_results
+            elseif Optim.maxdiff(x, x_k1) < xtol(m)
+                mma_results.stopped_xtol = true
+                return mma_results
+            elseif abs(ri - f_k1) / (abs(ri) + ftol(m)) < ftol(m)
+                mma_results.stopped_ftol = true
+                return mma_results
+            end
+        end
+
+        copy!(x_k2, x_k1)
+        copy!(x_k1, x)
+        f_k1 = ri
 
         r0 = 0.0
         r = zeros(n_i)
@@ -102,91 +179,76 @@ function solve(m::MMAModel, x::Vector{Float64})
         p = zeros(n_i, n_j)
         q = zeros(n_i, n_j)
 
-       # for k = 1:max_iters
-       #     x_k2 = x_k1
-        #    x_k1 = x
+        update_L_U!(L, U, m, k, x_k2, x_k1, x)
+        for j = 1:dim(m)
+            α[j] = max(0.9 * L[j] + 0.1 * x[j], min(m, j))
+            β[j] = min(0.9 * U[j] + 0.1 * x[j], max(m, j))
+        end
 
         for (i, f) in enumerate([objective(m); constraint(m)])
-            fi = f(x, ∇fi)
-            #println("∇fi_mma: $∇fi")
-            rv = fi
+            # Also computes the tangent and stores it in second argument
+            if i > 1
+                ri = f(x, ∇fi)
+            end
             for j in 1:dim(m)
                 Ujxj = U[j] - x[j]
                 xjLj = x[j] - L[j]
                 if ∇fi[j] > 0
-                    pv = Ujxj^2 * ∇fi[j]
-                    qv = 0.0
+                    p_ij = abs2(Ujxj) * ∇fi[j]
+                    q_ij = 0.0
                 else
-                    pv = 0.0
-                    qv = -xjLj^2 * ∇fi[j]
+                    p_ij = 0.0
+                    q_ij = -abs2(xjLj) * ∇fi[j]
                 end
-                rv -= pv / Ujxj + qv / xjLj
+                ri -= p_ij / Ujxj + q_ij / xjLj
                 if i == 1
-                    p0[j] = pv
-                    q0[j] = qv
+                    p0[j] = p_ij
+                    q0[j] = q_ij
                 else
-                    p[i-1, j] = pv
-                    q[i-1, j] = qv
+                    p[i-1, j] = p_ij
+                    q[i-1, j] = q_ij
                 end
             end
             if i == 1
-                r0 = rv
+                r0 = ri
             else
-                r[i-1] = rv
+                r[i-1] = ri
             end
         end
 
+        φ = (λ) -> compute_φ(λ, Float64[], x, r, r0, p, p0, q, q0, L, U, α, β)
+        φgrad = (λ, grad) -> compute_φ(λ, grad, x, r, r0, p, p0, q, q0, L, U, α, β)
+        d4 = DifferentiableFunction(φ, φgrad, φgrad)
+        results = fminbox(d4, λ, l, u)
+        λ = results.minimum
 
-    #compute_x!(x, λ, p, q, L, U, α, β)
-    φ = (λ) -> compute_φ(λ, Float64[], x, r, r0, p, p0, q, q0, L, U, α, β)
-    φgrad = (λ, grad) -> compute_φ(λ, grad, x, r, r0, p, p0, q, q0, L, U, α, β)
-
-    d4 = DifferentiableFunction(φ, φgrad)
-
-    l = zeros(n_ineqs)
-    u = [Inf]
-    x0 = [1.0]
-    results = fminbox(d4, x0, l, u)
-
-end
+        compute_x!(x, λ, p, p0, q, q0, L, U, α, β)
+    end
 
     return x
 end
 
-function compute_φ(λ, grad, x, r, r0, p, p0, q, q0, L, U, α, β)
-    λ = [λ]
-    b = [0.008188]
-    φ = r0 - dot(λ, b)
- #   println("r: $r")
- #   println("r0: $r0")
-    #println(r)
-   # println("r: $r")
+function compute_φ(λ, ∇f, x, r, r0, p, p0, q, q0, L, U, α, β)
+    φ = r0 + dot(λ, r)
     compute_x!(x, λ, p, p0, q, q0, L, U, α, β)
-   # println("x: $x")
-   # println("q0: $q0")
-   # println("$U")
     for j = 1:length(x)
         Ujxj = U[j] - x[j]
         xjLj = x[j] - L[j]
-        φ += q0[j] / (x[j] - L[j]) + dot(λ, p[:,j])*x[j]
-        #φ += (p0[j] + dot(λ, p[:,j])) / (U[j] - x[j])
-        #φ += (q0[j] + dot(λ, q[:,j])) / (x[j] - L[j])
-        #println("$Ujxj")
-        #φ += (λ'*p[:,j]) / Ujxj
+        φ += (p0[j] + dot(λ, p[:,j])) / Ujxj
+        φ += (q0[j] + dot(λ, q[:,j])) / xjLj
     end
 
-    if length(grad) != 0
+    if length(∇f) > 0
         for i = 1:length(λ)
-            grad[i] = -b[i]
+            ∇f[i] = r[i]
             for j = 1:length(x)
-                grad[i]  += p[i,j] * x[j]
-                #grad[i] += p[i,j] / (U[j] - x[j])
-                #grad[i] += q[i,j] / (x[j] - L[j])
+                ∇f[i] += p[i,j] / (U[j] - x[j])
+                ∇f[i] += q[i,j] / (x[j] - L[j])
             end
         end
     end
-    #println("φ: $φ")
-    scale!(grad, -1.0)
+    # Negate since we have a maximization problem
+    scale!(∇f, -1.0)
     return -φ
 end
 
@@ -202,45 +264,22 @@ function compute_x!(x, λ, p, p0, q, q0, L, U, α, β)
             x[j] = α[j]
         end
     end
-    #println("x_mma: $x")
 end
 
-function update_L_U!(L, U, m, s, k, x_k2, x_k1, x_k)
+function update_L_U!(L, U, m, k, x_k2, x_k1, x_k)
     s = 0.7
     for j = 1:dim(m)
         if k == 1 || k == 2
-            L[j] = x_k[j] - (max(m,j) - min(m, i))
-            U[j] = x_k[j] + (max(m,j) - min(m, i))
+            L[j] = x_k[j] - (max(m,j) - min(m, j))
+            U[j] = x_k[j] + (max(m,j) - min(m, j))
         else
             if sign(x_k[j] - x_k1[j]) != sign(x_k1[j] - x_k2[j])
-                L[j] = x_k[j] - s * (x_k1[j] - L[j])
-                U[j] = x_k[j] + s * (U[j] - x_k1[j])
+                L[j] = x_k[j] - (x_k1[j] - L[j]) * s
+                U[j] = x_k[j] + (U[j] - x_k1[j]) * s
             else
                 L[j] = x_k[j] - (x_k1[j] - L[j]) / s
                 U[j] = x_k[j] + (U[j] - x_k1[j]) / s
             end
-        end
-    end
-end
-
-
-
-function error_check(m, x0)
-    if length(x0) != dim(m)
-        throw(ArgumentError("initial variable must have same dimension as model"))
-    end
-
-    for (i, x) in enumerate(x0)
-        # x is not in box
-        if !(min(m, i) <= x <= max(m,i))
-            throw(ArgumentError("initial variable at index $i outside box constraint"))
-        end
-    end
-    for g in m.ineq_constraints
-        # x0 is outside ineq constraint
-        println(g(x0, []))
-        if g(x0, []) > 0
-            throw(ArgumentError("initial variable outside inequality constraint"))
         end
     end
 end

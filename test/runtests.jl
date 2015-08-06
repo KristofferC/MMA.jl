@@ -1,7 +1,8 @@
 using MMA
 using Base.Test
 
-# write your own tests here
+import MMA: eval_constraint, eval_objective
+
 function f(x, grad)
     if length(grad) != 0
         grad[1] = 0.0
@@ -11,12 +12,14 @@ function f(x, grad)
 end
 
 function g(x::Vector, grad::Vector, a, b)
-    grad[1] = 3a * (a*x[1] + b)^2
-    grad[2] = -1
+    if length(grad) != 0
+        grad[1] = 3a * (a*x[1] + b)^2
+        grad[2] = -1
+    end
     (a*x[1] + b)^3 - x[2]
 end
 
-m = MMAModel(2, f)
+m = MMAModel(2, f, xtol = 1e-6)
 
 box!(m, 1, 0.0, 100.0)
 box!(m, 2, 0.0, 100.0)
@@ -33,7 +36,7 @@ let
     grad1 = zeros(2)
     grad2 = zeros(2)
     p = [1.234, 2.345]
-    @test_approx_eq objective(m)(p, grad2) f(p, grad1)
+    @test_approx_eq eval_objective(m, p, grad2) f(p, grad1)
     @test_approx_eq grad1 grad2
 end
 
@@ -48,32 +51,15 @@ let
     grad1 = zeros(2)
     grad2 = zeros(2)
     p = [1.234, 2.345]
-    @test_approx_eq constraint(m, 1)(p, grad1) g(p,grad2 ,2,0)
+    @test_approx_eq eval_constraint(m, 1, p, grad1) g(p,grad2 ,2,0)
     @test_approx_eq grad1 grad2
 
-    @test_approx_eq constraint(m, 2)(p, grad1) g(p,grad2,-1,1)
+    @test_approx_eq eval_constraint(m, 2, p, grad1) g(p,grad2,-1,1)
     @test_approx_eq grad1 grad2
 end
 
+r = solve(m, [0.5, 5.0])
+println(r)
 
-
-
-#using PyPlot
-#grad = zeros(2)
-#println("---")
-#println(φ([1.0, 2.0]))
-#println(φgrad([1.0, 2.0], grad))
-
-#λs = 0.01:0.01:10
-#plot(λs, [φ(λ) for λ in λs])
-
-
-
-
-
-
-
-
-
-#print(solve(m, [0.25, 5.678]))
-
+@test abs(r.obj_value - sqrt(8/27)) < 1e-6
+@test norm(r.minimum - [1/3, 8/27]) < 1e-6
