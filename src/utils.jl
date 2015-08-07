@@ -9,12 +9,7 @@ function check_error(m, x0)
             throw(ArgumentError("initial variable at index $j outside box constraint"))
         end
     end
-    for i in 1:length(constraints(m))
-        # x0 is outside ineq constraint
-        if eval_constraint(m, i, x0, []) > 0
-            throw(ArgumentError("initial variable outside inequality constraint"))
-        end
-    end
+
 end
 
 # From Optim.jl

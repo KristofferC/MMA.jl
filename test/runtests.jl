@@ -19,7 +19,8 @@ function g(x::Vector, grad::Vector, a, b)
     (a*x[1] + b)^3 - x[2]
 end
 
-m = MMAModel(2, f, xtol = 1e-8, ftol = 1e-10)
+ndim = 2
+m = MMAModel(ndim, f, xtol = 1e-8, ftol = 1e-10, store_trace=true)
 
 box!(m, 1, 0.0, 10.0)
 box!(m, 2, 0.0, 10.0)
@@ -62,3 +63,4 @@ r = optimize(m, [0.5, 5.0])
 @test abs(r.f_minimum - sqrt(8/27)) < 1e-6
 @test norm(r.minimum - [1/3, 8/27]) < 1e-6
 
+println(r.trace)
