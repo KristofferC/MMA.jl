@@ -62,5 +62,3 @@ end
 r = optimize(m, [0.5, 5.0])
 @test abs(r.f_minimum - sqrt(8/27)) < 1e-6
 @test norm(r.minimum - [1/3, 8/27]) < 1e-6
-
-println(r.trace)

@@ -24,7 +24,7 @@ macro mmatrace()
             if m.extended_trace
                 dt["x"] = copy(x)
                 dt["g(x)"] = copy(∇f_x)
-                dt["λ"] = copy(λ)
+                dt["λ"] = copy(results.minimum)
             end
             grnorm = norm(∇f_x[:], Inf)
             update!(tr,
@@ -149,8 +149,7 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     # Constraint gradient buffer
     ∇g = similar(x)
 
-    # Buffers, initial data and bounds for fminbox to solve dual problem
-    ∇φ = zeros(n_i)
+    # Initial data and bounds for fminbox to solve dual problem
     λ = ones(n_i)
     l = zeros(n_i)
     u = Inf * ones(n_i)
@@ -176,14 +175,12 @@ function optimize(m::MMAModel, x0::Vector{Float64})
         copy!(x_k1, x)
 
         update_limits!(L, U, m, k, x, x_k1, x_k2)
-        L = zeros(size(U))
         r0 = compute_mma!(p0, q0, p, q, r, m, f_x, ∇f_x, ∇g, L, U, α, β, x)
 
         dual = (λ) -> compute_dual!(λ, Float64[], x, r, r0, p, p0, q, q0, L, U, α, β)
         dual_grad = (λ, grad_dual) -> compute_dual!(λ, grad_dual, x, r, r0, p, p0, q, q0, L, U, α, β)
         d = DifferentiableFunction(dual, dual_grad, dual_grad)
         results = fminbox(d, λ, l, u, xtol=1e-10, ftol=1e-10)
-        λ = results.minimum
         f_x_previous, f_x = f_x, eval_objective(m, x, ∇f_x)
         f_calls, g_calls = f_calls + 1, g_calls + 1
         @mmatrace()
