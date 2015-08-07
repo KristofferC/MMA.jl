@@ -1,7 +1,7 @@
 using MMA
 using Base.Test
 
-import MMA: eval_constraint, eval_objective
+import MMA: eval_constraint, eval_objective, dim
 
 function f(x, grad)
     if length(grad) != 0
@@ -19,10 +19,10 @@ function g(x::Vector, grad::Vector, a, b)
     (a*x[1] + b)^3 - x[2]
 end
 
-m = MMAModel(2, f, xtol = 1e-6)
+m = MMAModel(2, f, xtol = 1e-8, ftol = 1e-10)
 
-box!(m, 1, 0.0, 100.0)
-box!(m, 2, 0.0, 100.0)
+box!(m, 1, 0.0, 10.0)
+box!(m, 2, 0.0, 10.0)
 
 ineq_constraint!(m, (x,grad) -> g(x,grad,2,0))
 ineq_constraint!(m, (x,grad) -> g(x,grad,-1,1))
@@ -42,9 +42,9 @@ end
 
 # Box
 @test min(m, 1) == 0.0
-@test max(m, 1) == 100.0
+@test max(m, 1) == 10.0
 @test min(m, 2) == 0.0
-@test max(m, 2) == 100.0
+@test max(m, 2) == 10.0
 
 # Inequalities
 let
@@ -58,8 +58,7 @@ let
     @test_approx_eq grad1 grad2
 end
 
-r = solve(m, [0.5, 5.0])
-println(r)
-
-@test abs(r.obj_value - sqrt(8/27)) < 1e-6
+r = optimize(m, [0.5, 5.0])
+@test abs(r.f_minimum - sqrt(8/27)) < 1e-6
 @test norm(r.minimum - [1/3, 8/27]) < 1e-6
+

@@ -45,14 +45,19 @@ results = solve(m, [0.5, 5.0])
 
 # Print the results
 print(results)
-#Results of MMA Algorithm
+#Results of Optimization Algorithm
+# * Algorithm: MMA
 # * Starting Point: [0.5,5.0]
-# * Minimum: [0.3333331679428084,0.29629653358888897]
+# * Minimum: [0.33333334126240005,0.29629630317993827]
 # * Value of Function at Minimum: 0.544331
 # * Iterations: 12
 # * Convergence: true
-#   * |x - x'| < 1.0e-06: true
-#   * |f(x) - f(x')| / |f(x)| < 1.5e-08: false
+#   * |x - x'| < 1.0e-08: true
+#   * |f(x) - f(x')| / |f(x)| < 1.0e-10: false
+#   * |g(x)| < 1.5e-08: false
+#   * Exceeded Maximum Number of Iterations: false
+# * Objective Function Calls: 13
+# * Gradient Call: 13
 ```
 
 
