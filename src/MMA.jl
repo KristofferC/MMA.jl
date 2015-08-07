@@ -21,19 +21,19 @@ macro mmatrace()
     quote
         if tracing
             dt = Dict()
-            if extended_trace
+            if m.extended_trace
                 dt["x"] = copy(x)
-                dt["g(x)"] = copy(∇f_k)
+                dt["g(x)"] = copy(∇f_x)
                 dt["λ"] = copy(λ)
             end
-            grnorm = norm(∇f_k[:], Inf)
+            grnorm = norm(∇f_x[:], Inf)
             update!(tr,
                     k,
                     f_x,
                     grnorm,
                     dt,
-                    store_trace,
-                    show_trace)
+                    m.store_trace,
+                    m.show_trace)
         end
     end
 end
@@ -176,6 +176,7 @@ function optimize(m::MMAModel, x0::Vector{Float64})
         copy!(x_k1, x)
 
         update_limits!(L, U, m, k, x, x_k1, x_k2)
+        L = zeros(size(U))
         r0 = compute_mma!(p0, q0, p, q, r, m, f_x, ∇f_x, ∇g, L, U, α, β, x)
 
         dual = (λ) -> compute_dual!(λ, Float64[], x, r, r0, p, p0, q, q0, L, U, α, β)
