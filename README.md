@@ -41,7 +41,8 @@ ineq_constraint!(m, (x,grad) -> g(x,grad,2,0))
 ineq_constraint!(m, (x,grad) -> g(x,grad,-1,1))
 
 # Solve the problem
-results = solve(m, [0.5, 5.0])
+x0 = [0.5, 0.5]
+results = optimize(m, x0)
 
 # Print the results
 print(results)
