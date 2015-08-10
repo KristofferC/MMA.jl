@@ -11,7 +11,7 @@ using Compat
 
 import Optim: update!, MultivariateOptimizationResults,
               OptimizationTrace
-import Base: min, max
+import Base: min, max, show
 
 export MMAModel, box!, ineq_constraint!, optimize
 
@@ -54,6 +54,38 @@ immutable MMAModel
     ftol::Float64
     xtol::Float64
     grtol::Float64
+end
+
+type DualData
+    L::Vector{Float64}
+    U::Vector{Float64}
+    α::Vector{Float64} # Lower move limit
+    β::Vector{Float64} # Upper move limit
+    p0::Vector{Float64}
+    q0::Vector{Float64}
+    p::Matrix{Float64}
+    q::Matrix{Float64}
+    r::Vector{Float64}
+    r0::Float64
+    x::Vector{Float64} # Optimal value for x in dual iteration
+    f_val::Float64 # Function value at current iteration
+    g_val::Vector{Float64} # Inequality values at current iteration
+    ∇f::Vector{Float64} # Function gradient at current iteration
+    ∇g::Matrix{Float64} # Inequality gradients [ineq][var] at current iteration
+end
+
+# Inspired by Parameters.jl
+const dd_fields = [:L, :U, :α, :β, :p0, :q0, :p, :q,
+                   :r, :r0, :x, :f_val, :g_val, :∇f, :∇g]
+macro unpack(dual_data)
+    esc(Expr(:block, [:($f = dual_data.$f) for f in dd_fields]...))
+end
+
+function show(io::IO, dual_data::DualData)
+    println("Dual data:")
+    for f in dd_fields
+        println("$f = $(dual_data.(f))")
+    end
 end
 
 dim(m::MMAModel) = m.dim
@@ -132,8 +164,7 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     check_error(m, x0)
     n_i = length(constraints(m))
     n_j = dim(m)
-    x0, x, x_k1, x_k2 = copy(x0), copy(x0), copy(x0), copy(x0)
-
+    x0, x, x1, x2 = copy(x0), copy(x0), copy(x0), copy(x0)
 
     # Buffers for bounds and move limits
     α, β, L, U = zeros(n_j), zeros(n_j), zeros(n_j), zeros(n_j)
@@ -143,21 +174,26 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     p, q = zeros(n_i, n_j), zeros(n_i, n_j)
     r = zeros(n_i)
 
-    # Objective gradient buffer
-    ∇f_x = similar(x)
-
-    # Constraint gradient buffer
-    ∇g = similar(x)
-
     # Initial data and bounds for fminbox to solve dual problem
     λ = ones(n_i)
     l = zeros(n_i)
     u = Inf * ones(n_i)
 
-    # Start of with evaluating the function at x0
+    # Objective gradient buffer
+    ∇f_x = similar(x)
     f_x = eval_objective(m, x, ∇f_x)
     f_calls, g_calls = 1, 1
     f_x_prev = NaN
+
+    # Evaluate the constraints and their gradients
+    g = zeros(n_i)
+    ∇g = zeros(n_j, n_i)
+    for i = 1:n_i
+        g[i] = eval_constraint(m, i, x, sub(∇g, :, i))
+    end
+
+    # Create a DualData type that holds the data needed for the dual problem
+    dual_data = DualData(L, U, α, β, p0, q0, p, q, r, 0.0, x, f_x, g, ∇f_x, ∇g)
 
     tr = OptimizationTrace()
     tracing = m.store_trace || m.extended_trace || m.show_trace
@@ -171,22 +207,26 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     while !converged && k < m.max_iters
         k += 1
         # Track trial points two steps back
-        copy!(x_k2, x_k1)
-        copy!(x_k1, x)
+        copy!(x2, x1)
+        copy!(x1, x)
 
-        update_limits!(L, U, m, k, x, x_k1, x_k2)
-        r0 = compute_mma!(p0, q0, p, q, r, m, f_x, ∇f_x, ∇g, L, U, α, β, x)
+        update_limits!(dual_data, m, k, x1, x2)
+        compute_mma!(dual_data, m)
 
-        dual = (λ) -> compute_dual!(λ, Float64[], x, r, r0, p, p0, q, q0, L, U, α, β)
-        dual_grad = (λ, grad_dual) -> compute_dual!(λ, grad_dual, x, r, r0, p, p0, q, q0, L, U, α, β)
+        dual = (λ) -> compute_dual!(λ, Float64[], dual_data)
+        dual_grad = (λ, grad_dual) -> compute_dual!(λ, grad_dual, dual_data)
         d = DifferentiableFunction(dual, dual_grad, dual_grad)
         results = fminbox(d, λ, l, u, xtol=1e-10, ftol=1e-10)
         f_x_previous, f_x = f_x, eval_objective(m, x, ∇f_x)
         f_calls, g_calls = f_calls + 1, g_calls + 1
+         # Evaluate the constraints and their gradients
+        for i = 1:n_i
+            g[i] = eval_constraint(m, i, x, sub(∇g, :, i))
+        end
         @mmatrace()
 
         x_converged, f_converged,
-        gr_converged, converged = assess_convergence(x, x_k1, f_x, f_x_previous, ∇f_x,
+        gr_converged, converged = assess_convergence(x, x1, f_x, f_x_previous, ∇f_x,
                                                      xtol(m), ftol(m), grtol(m))
         if converged
             break
@@ -213,7 +253,8 @@ end
 
 # Updates p0, q0, p, q, r and returns r0.
 # For notation see reference at top
-function compute_mma!(p0, q0, p, q, r, m, f_x, ∇f_k, ∇g, L, U, α, β, x)
+function compute_mma!(dual_data, m)
+    @unpack dual_data
     # Bound limits
     for j = 1:dim(m)
             α[j] = max(0.9 * L[j] + 0.1 * x[j], min(m, j))
@@ -223,11 +264,11 @@ function compute_mma!(p0, q0, p, q, r, m, f_x, ∇f_k, ∇g, L, U, α, β, x)
     r0 = 0.0
     for i in 0:length(constraints(m))
         if i == 0
-            ri = f_x
-            ∇fi = ∇f_k
+            ri = f_val
+            ∇fi = ∇f
         else
-             ri = eval_constraint(m, i, x, ∇g)
-             ∇fi = ∇g
+             ri = g_val[i]
+             ∇fi = sub(∇g, :, i)
         end
         for j in 1:dim(m)
             Ujxj = U[j] - x[j]
@@ -254,35 +295,37 @@ function compute_mma!(p0, q0, p, q, r, m, f_x, ∇f_k, ∇g, L, U, α, β, x)
             r[i] = ri
         end
     end
-    return r0
+    dual_data.r0 = r0
 end
 
 # Update move limits
-function update_limits!(L, U, m, k, x_k, x_k1, x_k2)
+function update_limits!(dual_data, m, k, x1, x2)
+    @unpack dual_data
     for j in 1:dim(m)
         if k == 1 || k == 2
             # Equation 11 in Svanberg
-            L[j] = x_k[j] - (max(m,j) - min(m, j))
-            U[j] = x_k[j] + (max(m,j) - min(m, j))
+            L[j] = x[j] - (max(m,j) - min(m, j))
+            U[j] = x[j] + (max(m,j) - min(m, j))
         else
             # Equation 12 in Svanberg
             s = 0.7 # Suggested by Svanberg
-            if sign(x_k[j] - x_k1[j]) != sign(x_k1[j] - x_k2[j])
-                L[j] = x_k[j] - (x_k1[j] - L[j]) * s
-                U[j] = x_k[j] + (U[j] - x_k1[j]) * s
+            if sign(x[j] - x1[j]) != sign(x1[j] - x2[j])
+                L[j] = x[j] - (x1[j] - L[j]) * s
+                U[j] = x[j] + (U[j] - x1[j]) * s
             # Equation 13 in Svanberg
             else
-                L[j] = x_k[j] - (x_k1[j] - L[j]) / s
-                U[j] = x_k[j] + (U[j] - x_k1[j]) / s
+                L[j] = x[j] - (x1[j] - L[j]) / s
+                U[j] = x[j] + (U[j] - x1[j]) / s
             end
         end
     end
 end
 
-function compute_dual!(λ, ∇f, x, r, r0, p, p0, q, q0, L, U, α, β)
-    φ = r0 + dot(λ, r)
-    compute_x!(x, λ, p, p0, q, q0, L, U, α, β)
 
+function compute_dual!(λ, ∇φ, dual_data)
+    @unpack dual_data
+    φ = r0 + dot(λ, r)
+    update_x!(dual_data, λ)
     for j = 1:length(x)
         φ += (p0[j] + dot(λ, p[:,j])) / (U[j] - x[j])
         φ += (q0[j] + dot(λ, q[:,j])) / (x[j] - L[j])
@@ -290,20 +333,22 @@ function compute_dual!(λ, ∇f, x, r, r0, p, p0, q, q0, L, U, α, β)
 
     if length(∇f) > 0
         for i = 1:length(λ)
-            ∇f[i] = r[i]
+            ∇φ[i] = r[i]
             for j = 1:length(x)
-                ∇f[i] += p[i,j] / (U[j] - x[j])
-                ∇f[i] += q[i,j] / (x[j] - L[j])
+                ∇φ[i] += p[i,j] / (U[j] - x[j])
+                ∇φ[i] += q[i,j] / (x[j] - L[j])
             end
         end
     end
     # Negate since we have a maximization problem
-    scale!(∇f, -1.0)
+    scale!(∇φ, -1.0)
     return -φ
 end
 
-
-function compute_x!(x, λ, p, p0, q, q0, L, U, α, β)
+# Updates x to be the analytical optimal point in the dual
+# problem for a given λ
+function update_x!(dual_data, λ)
+    @unpack dual_data
     for j in 1:length(x)
         fpj = sqrt((p0[j] + dot(λ, p[:,j])))
         fqj = sqrt((q0[j] + dot(λ, q[:,j])))
