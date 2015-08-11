@@ -14,7 +14,7 @@ The code in this module was made for a course in Structural Optimization and sho
 using MMA
 
 # Define objective function
-function f(x::Vector, grad::Vector)
+function f(x::Vector, grad::AbstractArray)
     if length(grad) != 0
         grad[1] = 0.0
         grad[2] = 0.5/sqrt(x[2])
@@ -23,7 +23,7 @@ function f(x::Vector, grad::Vector)
 end
 
 # Define a constraint function
-function g(x::Vector, grad::Vector, a, b)
+function g(x::Vector, grad::AbstractArray, a, b)
     if length(grad) != 0
         grad[1] = 3a * (a*x[1] + b)^2
         grad[2] = -1
@@ -33,7 +33,7 @@ end
 
 # Create the MMAModel with a relative tolerance on x
 ndim = 2
-m = MMAModel(ndim, f, xtol = 1e-6, store_trace=true)
+m = MMAModel(ndim, f, xtol = 1e-9, store_trace=true)
 
 # Add box constraints to the variables
 box!(m, 1, 0.0, 100.0)
@@ -49,19 +49,20 @@ results = optimize(m, x0)
 
 # Print the results
 print(results)
+
 #Results of Optimization Algorithm
 # * Algorithm: MMA
 # * Starting Point: [1.234,2.345]
-# * Minimum: [0.33333337442254185,0.29629638863767566]
+# * Minimum: [0.333333310647954,0.29629633140221534]
 # * Value of Function at Minimum: 0.544331
-# * Iterations: 7
+# * Iterations: 20
 # * Convergence: true
-#   * |x - x'| < 1.0e-06: true
-#   * |f(x) - f(x')| / |f(x)| < 1.5e-08: false
+#   * |x - x'| < 1.0e-09: false
+#   * |f(x) - f(x')| / |f(x)| < 1.5e-08: true
 #   * |g(x)| < 1.5e-08: false
 #   * Exceeded Maximum Number of Iterations: false
-# * Objective Function Calls: 8
-# * Gradient Call: 8
+# * Objective Function Calls: 21
+# * Gradient Call: 21
 
 # Print the trace
 print(results.trace)     
