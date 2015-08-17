@@ -216,7 +216,7 @@ function optimize(m::MMAModel, x0::Vector{Float64})
         dual = (λ) -> compute_dual!(λ, Float64[], dual_data)
         dual_grad = (λ, grad_dual) -> compute_dual!(λ, grad_dual, dual_data)
         d = DifferentiableFunction(dual, dual_grad, dual_grad)
-        results = fminbox(d, λ, l, u, xtol=1e-10, ftol=1e-10)
+        results = fminbox(d, λ, l, u)
         f_x_previous, f_x = f_x, eval_objective(m, x, ∇f_x)
         f_calls, g_calls = f_calls + 1, g_calls + 1
          # Evaluate the constraints and their gradients
@@ -257,8 +257,9 @@ function compute_mma!(dual_data, m)
     @unpack dual_data
     # Bound limits
     for j = 1:dim(m)
-            α[j] = max(0.9 * L[j] + 0.1 * x[j], min(m, j))
-            β[j] = min(0.9 * U[j] + 0.1 * x[j], max(m, j))
+        μ = 0.1
+        α[j] = max(L[j] + μ * (x[j] - L[j]), min(m, j))
+        β[j] = min(U[j] - μ * (U[j] - x[j]), max(m, j))
     end
 
     r0 = 0.0
@@ -303,40 +304,51 @@ function update_limits!(dual_data, m, k, x1, x2)
     @unpack dual_data
     for j in 1:dim(m)
         if k == 1 || k == 2
+            s_init = 0.5
             # Equation 11 in Svanberg
-            L[j] = x[j] - (max(m,j) - min(m, j))
-            U[j] = x[j] + (max(m,j) - min(m, j))
+            L[j] = x[j] - s_init * (max(m,j) - min(m, j))
+            U[j] = x[j] + s_init * (max(m,j) - min(m, j))
         else
             # Equation 12 in Svanberg
-            s = 0.7 # Suggested by Svanberg
+            s_incr = 1.05 # Suggested by Svanberg
+            s_decr = 0.65
             if sign(x[j] - x1[j]) != sign(x1[j] - x2[j])
-                L[j] = x[j] - (x1[j] - L[j]) * s
-                U[j] = x[j] + (U[j] - x1[j]) * s
+                L[j] = x[j] - (x1[j] - L[j]) * s_decr
+                U[j] = x[j] + (U[j] - x1[j]) * s_decr
             # Equation 13 in Svanberg
             else
-                L[j] = x[j] - (x1[j] - L[j]) / s
-                U[j] = x[j] + (U[j] - x1[j]) / s
+                L[j] = x[j] - (x1[j] - L[j]) * s_incr
+                U[j] = x[j] + (U[j] - x1[j]) * s_incr
             end
         end
     end
 end
 
+function matdot(A::Vector, B::Matrix, j::Int)
+    r = 0.0
+    @inbounds for i in eachindex(A)
+        r += A[i] * B[i, j]
+    end
+    return r
+end
 
 function compute_dual!(λ, ∇φ, dual_data)
     @unpack dual_data
     φ = r0 + dot(λ, r)
     update_x!(dual_data, λ)
-    for j = 1:length(x)
-        φ += (p0[j] + dot(λ, p[:,j])) / (U[j] - x[j])
-        φ += (q0[j] + dot(λ, q[:,j])) / (x[j] - L[j])
+    @inbounds for j = 1:length(x)
+        φ += (p0[j] + matdot(λ, p, j)) / (U[j] - x[j])
+        φ += (q0[j] + matdot(λ, q, j)) / (x[j] - L[j])
     end
 
     if length(∇f) > 0
         for i = 1:length(λ)
-            ∇φ[i] = r[i]
-            for j = 1:length(x)
-                ∇φ[i] += p[i,j] / (U[j] - x[j])
-                ∇φ[i] += q[i,j] / (x[j] - L[j])
+            if length(∇φ) > 0
+                ∇φ[i] = r[i]
+                for j = 1:length(x)
+                    ∇φ[i] += p[i,j] / (U[j] - x[j])
+                    ∇φ[i] += q[i,j] / (x[j] - L[j])
+                end
             end
         end
     end
@@ -349,9 +361,9 @@ end
 # problem for a given λ
 function update_x!(dual_data, λ)
     @unpack dual_data
-    for j in 1:length(x)
-        fpj = sqrt((p0[j] + dot(λ, p[:,j])))
-        fqj = sqrt((q0[j] + dot(λ, q[:,j])))
+    @inbounds for j in 1:length(x)
+        fpj = sqrt(p0[j] + matdot(λ, p, j))
+        fqj = sqrt(q0[j] + matdot(λ, q, j))
         x[j] = (fpj * L[j] + fqj * U[j]) / (fpj + fqj)
         if x[j] > β[j]
             x[j] = β[j]
