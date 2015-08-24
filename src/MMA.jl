@@ -218,6 +218,9 @@ function optimize(m::MMAModel, x0::Vector{Float64})
         dual_grad = (λ, grad_dual) -> compute_dual!(λ, grad_dual, dual_data)
         d = DifferentiableFunction(dual, dual_grad, dual_grad)
         results = fminbox(d, λ, l, u)
+        # Use previously converged λ as starting guess
+        copy!(λ, results.minimum)
+        copy!(x, update_x!(dual_data, results.minimum))
         f_x_previous, f_x = f_x, eval_objective(m, x, ∇f_x)
         f_calls, g_calls = f_calls + 1, g_calls + 1
          # Evaluate the constraints and their gradients
@@ -336,10 +339,10 @@ end
 function compute_dual!(λ, ∇φ, dual_data)
     @unpack dual_data
     φ = r0 + dot(λ, r)
-    update_x!(dual_data, λ)
+    x_opt = update_x!(dual_data, λ)
     @inbounds for j = 1:length(x)
-        φ += (p0[j] + matdot(λ, p, j)) / (U[j] - x[j])
-        φ += (q0[j] + matdot(λ, q, j)) / (x[j] - L[j])
+        φ += (p0[j] + matdot(λ, p, j)) / (U[j] - x_opt[j])
+        φ += (q0[j] + matdot(λ, q, j)) / (x_opt[j] - L[j])
     end
 
     if length(∇f) > 0
@@ -347,8 +350,8 @@ function compute_dual!(λ, ∇φ, dual_data)
             if length(∇φ) > 0
                 ∇φ[i] = r[i]
                 for j = 1:length(x)
-                    ∇φ[i] += p[i,j] / (U[j] - x[j])
-                    ∇φ[i] += q[i,j] / (x[j] - L[j])
+                    ∇φ[i] += p[i,j] / (U[j] - x_opt[j])
+                    ∇φ[i] += q[i,j] / (x_opt[j] - L[j])
                 end
             end
         end
@@ -362,16 +365,18 @@ end
 # problem for a given λ
 function update_x!(dual_data, λ)
     @unpack dual_data
+    x_opt = zeros(eltype(λ), length(x))
     @inbounds for j in 1:length(x)
         fpj = sqrt(p0[j] + matdot(λ, p, j))
         fqj = sqrt(q0[j] + matdot(λ, q, j))
-        x[j] = (fpj * L[j] + fqj * U[j]) / (fpj + fqj)
-        if x[j] > β[j]
-            x[j] = β[j]
-        elseif x[j] < α[j]
-            x[j] = α[j]
+        x_opt[j] = (fpj * L[j] + fqj * U[j]) / (fpj + fqj)
+        if x_opt[j] > β[j]
+            x_opt[j] = β[j]
+        elseif x_opt[j] < α[j]
+            x_opt[j] = α[j]
         end
     end
+    return x_opt
 end
 
 end # module
