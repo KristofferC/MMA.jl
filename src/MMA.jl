@@ -206,11 +206,12 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     k = 0
     while !converged && k < m.max_iters
         k += 1
-        # Track trial points two steps back
+        update_limits!(dual_data, m, k, x1, x2)
+
+         # Track trial points two steps back
         copy!(x2, x1)
         copy!(x1, x)
 
-        update_limits!(dual_data, m, k, x1, x2)
         compute_mma!(dual_data, m)
 
         dual = (λ) -> compute_dual!(λ, Float64[], dual_data)
