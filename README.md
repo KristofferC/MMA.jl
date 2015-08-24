@@ -33,7 +33,7 @@ end
 
 # Create the MMAModel with a relative tolerance on x
 ndim = 2
-m = MMAModel(ndim, f, xtol = 1e-9, store_trace=true)
+m = MMAModel(ndim, f, xtol = 1e-6, store_trace=true)
 
 # Add box constraints to the variables
 box!(m, 1, 0.0, 100.0)
@@ -51,30 +51,31 @@ results = optimize(m, x0)
 print(results)
 
 #Results of Optimization Algorithm
-# * Algorithm: MMA
-# * Starting Point: [1.234,2.345]
-# * Minimum: [0.333333310647954,0.29629633140221534]
-# * Value of Function at Minimum: 0.544331
-# * Iterations: 20
-# * Convergence: true
-#   * |x - x'| < 1.0e-09: false
-#   * |f(x) - f(x')| / |f(x)| < 1.5e-08: true
-#   * |g(x)| < 1.5e-08: false
-#   * Exceeded Maximum Number of Iterations: false
-# * Objective Function Calls: 21
-# * Gradient Call: 21
+# Results of Optimization Algorithm
+#  * Algorithm: MMA
+#  * Starting Point: [1.234,2.345]
+#  * Minimum: [0.3333335414323581,0.2962963019993659]
+#  * Value of Function at Minimum: 0.544331
+#  * Iterations: 7
+#  * Convergence: true
+#    * |x - x'| < 1.0e-06: true
+#    * |f(x) - f(x')| / |f(x)| < 1.5e-08: false
+#    * |g(x)| < 1.5e-08: false
+#    * Exceeded Maximum Number of Iterations: false
+#  * Objective Function Calls: 8
+#  * Gradient Call: 8
 
 # Print the trace
-print(results.trace)     
-#Iter     Function value   Gradient norm 
+#print(results.trace)
+#Iter     Function value   Gradient norm
 #------   --------------   --------------
-#     1     1.093156e+00     4.573912e-01
-#     2     7.801333e-01     6.409161e-01
-#     3     6.093655e-01     8.205256e-01
-#     4     5.518945e-01     9.059702e-01
-#     5     5.444587e-01     9.183433e-01
-#     6     5.443311e-01     9.185586e-01
-#     7     5.443311e-01     9.185585e-01
+#     1     8.833999e-01     5.659951e-01
+#     2     3.766758e-01     1.327401e+00
+#     3     4.672562e-01     1.070077e+00
+#     4     5.408004e-01     9.245555e-01
+#     5     5.443183e-01     9.185802e-01
+#     6     5.443318e-01     9.185573e-01
+#     7     5.443311e-01     9.185586e-01
 ```
 
 
