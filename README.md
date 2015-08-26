@@ -14,7 +14,7 @@ The code in this module was made for a course in Structural Optimization and sho
 using MMA
 
 # Define objective function
-function f(x::Vector, grad::AbstractArray)
+function f(x::Vector, grad::Vector)
     if length(grad) != 0
         grad[1] = 0.0
         grad[2] = 0.5/sqrt(x[2])
@@ -23,7 +23,7 @@ function f(x::Vector, grad::AbstractArray)
 end
 
 # Define a constraint function
-function g(x::Vector, grad::AbstractArray, a, b)
+function g(x::Vector, grad::Vector, a, b)
     if length(grad) != 0
         grad[1] = 3a * (a*x[1] + b)^2
         grad[2] = -1
