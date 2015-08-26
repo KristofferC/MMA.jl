@@ -3,7 +3,7 @@ using Base.Test
 
 import MMA: eval_constraint, eval_objective, dim
 
-function f(x, grad)
+function f(x::Vector, grad::Vector)
     if length(grad) != 0
         grad[1] = 0.0
         grad[2] = 0.5/sqrt(x[2])
@@ -11,7 +11,7 @@ function f(x, grad)
     sqrt(x[2])
 end
 
-function g(x::Vector, grad, a, b)
+function g(x::Vector, grad::Vector, a, b)
     if length(grad) != 0
         grad[1] = 3a * (a*x[1] + b)^2
         grad[2] = -1

@@ -71,7 +71,7 @@ type DualData
     f_val::Float64 # Function value at current iteration
     g_val::Vector{Float64} # Inequality values at current iteration
     ∇f::Vector{Float64} # Function gradient at current iteration
-    ∇g::Matrix{Float64} # Inequality gradients [ineq][var] at current iteration
+    ∇g::Vector{Vector{Float64}} # Inequality gradients [ineq][var] at current iteration
 end
 
 # Inspired by Parameters.jl
@@ -187,9 +187,9 @@ function optimize(m::MMAModel, x0::Vector{Float64})
 
     # Evaluate the constraints and their gradients
     g = zeros(n_i)
-    ∇g = zeros(n_j, n_i)
+    ∇g = [zeros(n_j) for _ in 1:n_i]
     for i = 1:n_i
-        g[i] = eval_constraint(m, i, x, sub(∇g, :, i))
+        g[i] = eval_constraint(m, i, x, ∇g[i])
     end
 
     # Create a DualData type that holds the data needed for the dual problem
@@ -225,7 +225,7 @@ function optimize(m::MMAModel, x0::Vector{Float64})
         f_calls, g_calls = f_calls + 1, g_calls + 1
          # Evaluate the constraints and their gradients
         for i = 1:n_i
-            g[i] = eval_constraint(m, i, x, sub(∇g, :, i))
+            g[i] = eval_constraint(m, i, x, ∇g[i])
         end
         @mmatrace()
 
@@ -273,7 +273,7 @@ function compute_mma!(dual_data, m)
             ∇fi = ∇f
         else
              ri = g_val[i]
-             ∇fi = sub(∇g, :, i)
+             ∇fi = ∇g[i]
         end
         for j in 1:dim(m)
             Ujxj = U[j] - x[j]
