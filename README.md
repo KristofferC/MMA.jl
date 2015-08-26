@@ -50,7 +50,6 @@ results = optimize(m, x0)
 # Print the results
 print(results)
 
-#Results of Optimization Algorithm
 # Results of Optimization Algorithm
 #  * Algorithm: MMA
 #  * Starting Point: [1.234,2.345]
@@ -77,7 +76,6 @@ print(results)
 #     6     5.443318e-01     9.185573e-01
 #     7     5.443311e-01     9.185586e-01
 ```
-
 
 ## References
 [1] [The method of moving asymptotes - a new method for structural optimization](http://www.researchgate.net/publication/227631828_The_method_of_moving_asymptotesa_new_method_for_structural_optimization)
