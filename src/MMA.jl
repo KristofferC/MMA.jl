@@ -38,7 +38,7 @@ macro mmatrace()
     end
 end
 
-immutable MMAModel
+struct MMAModel
     dim::Int
     objective::Function
     ineq_constraints::Vector{Function}
@@ -56,7 +56,7 @@ immutable MMAModel
     grtol::Float64
 end
 
-type DualData
+mutable struct DualData
     L::Vector{Float64}
     U::Vector{Float64}
     α::Vector{Float64} # Lower move limit
