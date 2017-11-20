@@ -202,9 +202,9 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     # Assess multiple types of convergence
     x_converged, f_converged, gr_converged = false, false, false
     f_increased = false
-    x_residual = fill(Float64(Inf), n_j)
+    x_residual = Float64(Inf)
     f_residual = Float64(Inf)
-    gr_residual = fill(Float64(Inf), n_j)
+    gr_residual = Float64(Inf)
 
     # Iteraton counter
     k = 0
