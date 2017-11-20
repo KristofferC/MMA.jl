@@ -50,31 +50,35 @@ results = optimize(m, x0)
 # Print the results
 print(results)
 
-# Results of Optimization Algorithm
-#  * Algorithm: MMA
-#  * Starting Point: [1.234,2.345]
-#  * Minimum: [0.3333335414323581,0.2962963019993659]
-#  * Value of Function at Minimum: 0.544331
-#  * Iterations: 7
-#  * Convergence: true
-#    * |x - x'| < 1.0e-06: true
-#    * |f(x) - f(x')| / |f(x)| < 1.5e-08: false
-#    * |g(x)| < 1.5e-08: false
-#    * Exceeded Maximum Number of Iterations: false
-#  * Objective Function Calls: 8
-#  * Gradient Call: 8
+#Results of Optimization Algorithm
+# * Algorithm: MMA._MMA
+# * Starting Point: [1.234,2.345]
+# * Minimizer: [0.3333332274782007,0.29629691337859027]
+# * Minimum: 5.443316e-01
+# * Iterations: 7
+# * Convergence: true
+#   * |x - x'| < 1.0e-06: true
+#     |x - x'| = 8.33e-08
+#   * |f(x) - f(x')| / |f(x)| < 1.5e-08: false
+#     |f(x) - f(x')| / |f(x)| = 7.65e-08
+#   * |g(x)| < 1.5e-08: false
+#     |g(x)| = 9.19e-01
+#   * stopped by an increasing objective: true
+#   * Reached Maximum Number of Iterations: false
+# * Objective Calls: 8
+# * Gradient Calls: 8
 
 # Print the trace
-#print(results.trace)
+#println(results.trace)
 #Iter     Function value   Gradient norm
 #------   --------------   --------------
-#     1     8.833999e-01     5.659951e-01
-#     2     3.766758e-01     1.327401e+00
-#     3     4.672562e-01     1.070077e+00
-#     4     5.408004e-01     9.245555e-01
-#     5     5.443183e-01     9.185802e-01
-#     6     5.443318e-01     9.185573e-01
-#     7     5.443311e-01     9.185586e-01
+#     1     3.948114e-01     1.266427e+00
+#     2     1.799667e-01     2.778292e+00
+#     3     4.353204e-01     1.148579e+00
+#     4     5.338213e-01     9.366429e-01
+#     5     5.442500e-01     9.186955e-01
+#     6     5.443315e-01     9.185578e-01
+#     7     5.443316e-01     9.185577e-01
 ```
 
 ## References
