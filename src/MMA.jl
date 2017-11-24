@@ -6,10 +6,8 @@
 # JA  - Int. J. Numer. Meth. Engng.
 module MMA
 
-import Optim
-
-import Optim: update!, MultivariateOptimizationResults,
-              OptimizationTrace, Optimizer
+import Optim: OnceDifferentiable, Fminbox, GradientDescent, update!, 
+                MultivariateOptimizationResults, OptimizationTrace, Optimizer, optimize, maxdiff
 import Base: min, max, show
 
 export MMAModel, box!, ineq_constraint!, optimize
@@ -23,7 +21,7 @@ macro mmatrace()
             if m.extended_trace
                 dt["x"] = copy(x)
                 dt["g(x)"] = copy(∇f_x)
-                dt["λ"] = copy(Optim.minimizer(results))
+                dt["λ"] = copy(results.minimizer)
             end
             update!(tr,
                     k,
@@ -36,7 +34,7 @@ macro mmatrace()
     end)
 end
 
-struct _MMA <: Optimizer end
+struct MMA87 <: Optimizer end
 
 struct MMAModel
     dim::Int
@@ -109,7 +107,7 @@ grtol!(m, v) = m.grtol = v
 
 function MMAModel(dim::Int,
                   objective::Function;
-                  max_iters=200,
+                  max_iters::Int = 200,
                   xtol::Float64 = eps(Float64),
                   ftol::Float64 = sqrt(eps(Float64)),
                   grtol::Float64 = sqrt(eps(Float64)),
@@ -117,8 +115,8 @@ function MMAModel(dim::Int,
                   show_trace::Bool = false,
                   extended_trace::Bool = false)
 
-    mins = Inf * ones(dim)
-    maxs = -Inf * ones(dim)
+    mins = fill(Float64(Inf), dim)
+    maxs = fill(Float64(-Inf), dim)
     MMAModel(dim, objective, Function[],
              mins, maxs, store_trace, show_trace, extended_trace,
              max_iters, ftol, xtol, grtol)
@@ -167,23 +165,23 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     x0, x, x1, x2 = copy(x0), copy(x0), copy(x0), copy(x0)
 
     # Buffers for bounds and move limits
-    α, β, L, U = zeros(n_j), zeros(n_j), zeros(n_j), zeros(n_j)
+    α, β, L, U = zeros(Float64, n_j), zeros(Float64, n_j), zeros(Float64, n_j), zeros(Float64, n_j)
 
     # Buffers for p0, pij, q0, qij
-    p0, q0 = zeros(n_j), zeros(n_j)
-    p, q = zeros(n_i, n_j), zeros(n_i, n_j)
-    r = zeros(n_i)
+    p0, q0 = zeros(Float64, n_j), zeros(Float64, n_j)
+    p, q = zeros(Float64, n_i, n_j), zeros(Float64, n_i, n_j)
+    r = zeros(Float64, n_i)
 
     # Initial data and bounds for Optim to solve dual problem
-    λ = ones(n_i)
-    l = zeros(n_i)
-    u = Inf * ones(n_i)
+    λ = ones(Float64, n_i)
+    l = zeros(Float64, n_i)
+    u = fill(Float64(Inf), n_i)
 
     # Objective gradient buffer
     ∇f_x = similar(x)
     f_x = eval_objective(m, x, ∇f_x)
     f_calls, g_calls = 1, 1
-    f_x_prev = NaN
+    f_x_previous = Float64(NaN)
 
     # Evaluate the constraints and their gradients
     g = zeros(n_i)
@@ -195,7 +193,7 @@ function optimize(m::MMAModel, x0::Vector{Float64})
     # Create a DualData type that holds the data needed for the dual problem
     dual_data = DualData(L, U, α, β, p0, q0, p, q, r, 0.0, x, f_x, g, ∇f_x, ∇g)
 
-    tr = Optim.OptimizationTrace{_MMA}()
+    tr = OptimizationTrace{MMA87}()
     tracing = (m.store_trace || m.extended_trace || m.show_trace)
 
     converged = false
@@ -220,10 +218,10 @@ function optimize(m::MMAModel, x0::Vector{Float64})
 
         dual(λ) = compute_dual!(λ, dual_data) #Lagrangian dual objective value
         dual_grad(grad_dual, λ) = compute_dual_grad!(grad_dual, λ, dual_data)
-        d = Optim.OnceDifferentiable(dual, dual_grad, λ)
-        results = Optim.optimize(d, λ, l, u, Optim.Fminbox{Optim.GradientDescent}())
+        d = OnceDifferentiable(dual, dual_grad, λ)
+        results = optimize(d, λ, l, u, Fminbox{GradientDescent}())
         # Use previously converged λ as starting guess
-        copy!(λ, Optim.minimizer(results))
+        copy!(λ, results.minimizer)
         update_x!(dual_data, λ)
         f_x_previous, f_x = f_x, eval_objective(m, x, ∇f_x)
         f_calls, g_calls = f_calls + 1, g_calls + 1
@@ -243,7 +241,7 @@ function optimize(m::MMAModel, x0::Vector{Float64})
         end
     end
     h_calls = 0
-    return Optim.MultivariateOptimizationResults(_MMA(),
+    return MultivariateOptimizationResults(MMA87(),
                                            false,
                                            x0,
                                            x,
@@ -315,18 +313,21 @@ function compute_mma!(dual_data, m)
 end
 
 # Update move limits
+
+const s_init = 0.5
+# Suggested by Svanberg
+const s_incr = 1.05
+const s_decr = 0.65
+
 function update_limits!(dual_data, m, k, x1, x2)
     @unpack dual_data
     for j in 1:dim(m)
         if k == 1 || k == 2
-            s_init = 0.5
             # Equation 11 in Svanberg
             L[j] = x[j] - s_init * (max(m,j) - min(m, j))
             U[j] = x[j] + s_init * (max(m,j) - min(m, j))
         else
             # Equation 12 in Svanberg
-            s_incr = 1.05 # Suggested by Svanberg
-            s_decr = 0.65            
             if sign(x[j] - x1[j]) != sign(x1[j] - x2[j])
                 L[j] = x[j] - (x1[j] - L[j]) * s_decr
                 U[j] = x[j] + (U[j] - x1[j]) * s_decr

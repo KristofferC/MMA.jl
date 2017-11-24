@@ -22,7 +22,7 @@ function assess_convergence(x::Array,
                             grtol::Real)
     x_converged, f_converged, gr_converged, f_increased = false, false, false, false
 
-    x_residual = Optim.maxdiff(x, x_previous)
+    x_residual = maxdiff(x, x_previous)
     f_residual = abs(f_x - f_x_previous)
     gr_residual = norm(vec(gr), Inf)
 
