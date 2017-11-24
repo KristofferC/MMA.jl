@@ -38,8 +38,8 @@ let
     grad1 = zeros(2)
     grad2 = zeros(2)
     p = [1.234, 2.345]
-    @test_approx_eq eval_objective(m, p, grad2) f(p, grad1)
-    @test_approx_eq grad1 grad2
+    @test eval_objective(m, p, grad2) ≈ f(p, grad1)
+    @test grad1 ≈ grad2
 end
 
 # Box
@@ -53,13 +53,13 @@ let
     grad1 = zeros(2)
     grad2 = zeros(2)
     p = [1.234, 2.345]
-    @test_approx_eq eval_constraint(m, 1, p, grad1) g(p,grad2 ,2,0)
-    @test_approx_eq grad1 grad2
+    @test eval_constraint(m, 1, p, grad1) ≈ g(p,grad2 ,2,0)
+    @test grad1 ≈ grad2
 
-    @test_approx_eq eval_constraint(m, 2, p, grad1) g(p,grad2,-1,1)
-    @test_approx_eq grad1 grad2
+    @test eval_constraint(m, 2, p, grad1) ≈ g(p,grad2,-1,1)
+    @test grad1 ≈ grad2
 end
 
 r = optimize(m, [1.234, 2.345])
-@test abs(r.f_minimum - sqrt(8/27)) < 1e-6
-@test norm(r.minimum - [1/3, 8/27]) < 1e-6
+@test abs(r.minimum - sqrt(8/27)) < 1e-6
+@test norm(r.minimizer - [1/3, 8/27]) < 1e-6
