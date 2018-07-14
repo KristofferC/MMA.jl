@@ -14,7 +14,7 @@ The code in this module was made for a course in Structural Optimization and sho
 using MMA
 
 # Define objective function
-function f(x::Vector, grad::Vector)
+function f(x::AbstractVector, grad::AbstractVector)
     if length(grad) != 0
         grad[1] = 0.0
         grad[2] = 0.5/sqrt(x[2])
@@ -23,7 +23,7 @@ function f(x::Vector, grad::Vector)
 end
 
 # Define a constraint function
-function g(x::Vector, grad::Vector, a, b)
+function g(x::AbstractVector, grad::AbstractVector, a, b)
     if length(grad) != 0
         grad[1] = 3a * (a*x[1] + b)^2
         grad[2] = -1
@@ -49,40 +49,40 @@ results = optimize(m, x0)
 
 # Print the results
 print(results)
-
 #Results of Optimization Algorithm
-# * Algorithm: MMA._MMA
+# * Algorithm: MMA.MMA87
 # * Starting Point: [1.234,2.345]
-# * Minimizer: [0.3333332274782007,0.29629691337859027]
-# * Minimum: 5.443316e-01
+# * Minimizer: [0.3333341071616548,0.29629732757492855]
+# * Minimum: 5.443320e-01
 # * Iterations: 7
 # * Convergence: true
-#   * |x - x'| < 1.0e-06: true
-#     |x - x'| = 8.33e-08
-#   * |f(x) - f(x')| / |f(x)| < 1.5e-08: false
-#     |f(x) - f(x')| / |f(x)| = 7.65e-08
-#   * |g(x)| < 1.5e-08: false
+#   * |x - x'| ≤ 1.0e-06: true
+#     |x - x'| = 7.75e-07
+#   * |f(x) - f(x')| ≤ 1.5e-08 |f(x)|: false
+#     |f(x) - f(x')| = 1.31e-06 |f(x)|
+#   * |g(x)| ≤ 1.5e-08: false
 #     |g(x)| = 9.19e-01
-#   * stopped by an increasing objective: true
+#   * Stopped by an increasing objective: true
 #   * Reached Maximum Number of Iterations: false
 # * Objective Calls: 8
 # * Gradient Calls: 8
 
 # Print the trace
-#println(results.trace)
+println(results.trace)
 #Iter     Function value   Gradient norm
 #------   --------------   --------------
-#     1     3.948114e-01     1.266427e+00
-#     2     1.799667e-01     2.778292e+00
-#     3     4.353204e-01     1.148579e+00
-#     4     5.338213e-01     9.366429e-01
-#     5     5.442500e-01     9.186955e-01
-#     6     5.443315e-01     9.185578e-01
-#     7     5.443316e-01     9.185577e-01
+#     1     3.947968e-01     1.266474e+00
+#     2     1.803133e-01     2.772951e+00
+#     3     4.353112e-01     1.148604e+00
+#     4     5.338189e-01     9.366472e-01
+#     5     5.442496e-01     9.186962e-01
+#     6     5.443313e-01     9.185583e-01
+#     7     5.443320e-01     9.185571e-01
 ```
 
 ## References
 [1] [The method of moving asymptotes - a new method for structural optimization](http://www.researchgate.net/publication/227631828_The_method_of_moving_asymptotesa_new_method_for_structural_optimization)
 
-### Author
+### Authors
 Kristoffer Carlsson - kristoffer.carlsson@chalmers.se
+Mohamed Tarek - mohamed82008@gmail.com
