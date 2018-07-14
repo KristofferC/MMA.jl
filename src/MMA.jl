@@ -74,7 +74,7 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
 
     asymptotes_updater = AsymptotesUpdater(m, L, U, x, x1, x2, s_init, s_incr, s_decr)
     variable_bounds_updater = VariableBoundsUpdater(primal_data, m, μ)
-    approx_grad_updater = ApproxGradientUpdater(primal_data, m)
+    cvx_grad_updater = ConvexApproxGradUpdater(primal_data, m)
 
     x_updater = XUpdater(primal_data)
     dual_obj = DualObjVal(primal_data, λ, x_updater)
@@ -95,7 +95,7 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
         variable_bounds_updater()    
 
         ## Computes values and updates gradients of convex approximations of objective and constraints
-        approx_grad_updater()
+        cvx_grad_updater()
 
         # Solve dual
         d = OnceDifferentiable(dual_obj, dual_obj_grad, λ)

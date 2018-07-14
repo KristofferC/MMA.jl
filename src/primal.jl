@@ -55,13 +55,13 @@ function (xu::XUpdater)(λ, j)
 end
 
 # Primal problem functions
-struct ApproxGradientUpdater{T, TV, TPD<:PrimalData{T, TV}, TM<:MMAModel{T, TV}}
+struct ConvexApproxGradUpdater{T, TV, TPD<:PrimalData{T, TV}, TM<:MMAModel{T, TV}}
     pd::TPD
     m::TM
 end
-ApproxGradientUpdater(pd::TPD, m::TM) where {T, TV, TPD<:PrimalData{T, TV}, TM<:MMAModel{T, TV}} = ApproxGradientUpdater{T, TV, TPD, TM}(pd, m)
+ConvexApproxGradUpdater(pd::TPD, m::TM) where {T, TV, TPD<:PrimalData{T, TV}, TM<:MMAModel{T, TV}} = ConvexApproxGradUpdater{T, TV, TPD, TM}(pd, m)
 
-function (gu::ApproxGradientUpdater{T})() where T
+function (gu::ConvexApproxGradUpdater{T})() where T
     @unpack pd, m = gu
     @unpack f_val, g_val, r = pd
     n = dim(m)
@@ -71,7 +71,7 @@ function (gu::ApproxGradientUpdater{T})() where T
         r, 1:length(constraints(m)))
     pd.r0[] = r0
 end
-function (gu::ApproxGradientUpdater{T})(j::Int) where T
+function (gu::ConvexApproxGradUpdater{T})(j::Int) where T
     pd = gu.pd
     @unpack x, L, U, p0, q0, ∇f = pd
     xj = x[j]
@@ -82,7 +82,7 @@ function (gu::ApproxGradientUpdater{T})(j::Int) where T
     p0[j], q0[j] = p0j, q0j
     return p0[j]/Ujxj + q0[j]/xjLj
 end
-function (gu::ApproxGradientUpdater{T})(ji::Tuple) where T
+function (gu::ConvexApproxGradUpdater{T})(ji::Tuple) where T
     j, i = ji
     pd = gu.pd
     @unpack x, L, U, p, q, ∇g = pd
