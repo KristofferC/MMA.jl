@@ -23,8 +23,7 @@ end
 DualObjVal(pd::TPD, λ::TV, x_updater::XUpdater{TPD}) where {T, TV, TPD<:PrimalData{T, TV}} = DualObjVal(pd, DualTermEvaluator{T, TV, TPD}(pd), x_updater)
 function (dobj::DualObjVal{T, TV, TPD})(λ) where {T, TV, TPD<:PrimalData{T}}
     @unpack pd, dte = dobj
-    #@unpack p, r, r0 = pd
-    @unpack p, r, r0, p0, q0, p, q, U, x, L = pd
+    @unpack p, r, r0 = pd
     # Updates x to the Lagrangian minimizer for the input λ
     dobj.x_updater(λ)
     nv, nc = size(p)

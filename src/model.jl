@@ -38,9 +38,9 @@ MMAModel(args...; kwargs...) = MMAModel{Float64, Vector{Float64}, Vector{Functio
 function MMAModel{T, TV, TC}(dim,
                   objective::Function;
                   max_iters = 200,
-                  xtol = T(eps(T)),
-                  ftol = sqrt(T(eps(T))),
-                  grtol = sqrt(T(eps(T))),
+                  xtol = eps(T),
+                  ftol = sqrt(eps(T)),
+                  grtol = sqrt(eps(T)),
                   store_trace::Bool = false,
                   show_trace::Bool = false,
                   extended_trace::Bool = false) where {T, TV, TC}

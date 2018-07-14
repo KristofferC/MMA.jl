@@ -110,7 +110,7 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
         f_calls, g_calls = f_calls + 1, g_calls + 1
         # Correct for functions whose gradients go to infinity at some points, e.g. √x
         while mapreduce((x)->(isinf(x) || isnan(x)), or, false, ∇f_x)
-            x .= T(0.01) .* x1 .+ T(0.99) .* x
+            map!((xs)->(T(0.01)*xs[1] + T(0.99)*xs[2]), x, zip(x1, x))
             f_x = eval_objective(m, x, ∇f_x)
             f_calls, g_calls = f_calls + 1, g_calls + 1
         end

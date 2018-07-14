@@ -13,10 +13,7 @@ nansof(::Type{TM}, n...) where TM = (TM(n...) .= NaN)
 
 @inline function matdot(v::AbstractVector, A::AbstractMatrix, j::Int)
     T = promote_type(eltype(v), eltype(A))
-    r = zero(T)
-    for i in 1:length(v)
-        r += v[i] * A[j, i]
-    end
+    r = mapreduce((va)->(va[1]*va[2]), +, zero(T), zip(v, @view(A[j,:])))
     return r
 end
 

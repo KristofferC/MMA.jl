@@ -33,17 +33,15 @@ function (xu::XUpdater)(λ, j)
     @unpack p0, p, q0, q, L, U, α, β = xu.pd
     lj1 = p0[j] + matdot(λ, p, j)
     lj2 = q0[j] + matdot(λ, q, j)
-    αj = α[j]
-    βj = β[j]
-    Lj = L[j]
-    Uj = U[j]
+    αj, βj = α[j], β[j]
+    Lj, Uj = L[j], U[j]
 
-    Ujαj = U[j] - αj
-    αjLj = αj - L[j]
+    Ujαj = Uj - αj
+    αjLj = αj - Lj
     ljαj = lj1/Ujαj^2 - lj2/αjLj^2 
 
-    Ujβj = U[j] - βj
-    βjLj = βj - L[j]
+    Ujβj = Uj - βj
+    βjLj = βj - Lj
     ljβj = lj1/Ujβj^2 - lj2/βjLj^2 
 
     fpj = sqrt(lj1)
@@ -66,7 +64,6 @@ function (gu::ConvexApproxGradUpdater{T})() where T
     @unpack f_val, g_val, r = pd
     n = dim(m)
     r0 = f_val[] - mapreduce(gu, +, T(0), 1:n)
-    old_r = copy(r)
     map!((i)->(g_val[i] - mapreduce(gu, +, T(0), Base.Iterators.product(1:n, i:i))), 
         r, 1:length(constraints(m)))
     pd.r0[] = r0
