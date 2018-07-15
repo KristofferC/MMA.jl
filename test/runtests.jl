@@ -58,6 +58,10 @@ let
     @test grad1 ≈ grad2
 end
 
-r = optimize(m, [1.234, 2.345])
+r = optimize(m, [1.234, 2.345], MMA.MMA02())
+@test abs(r.minimum - sqrt(8/27)) < 1e-6
+@test norm(r.minimizer - [1/3, 8/27]) < 1e-6
+
+r = optimize(m, [1.234, 2.345], MMA.MMA87())
 @test abs(r.minimum - sqrt(8/27)) < 1e-6
 @test norm(r.minimizer - [1/3, 8/27]) < 1e-6
