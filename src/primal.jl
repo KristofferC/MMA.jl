@@ -1,25 +1,20 @@
 struct PrimalData{T, TV<:AbstractVector{T}, TM<:AbstractMatrix{T}}
-    L::TV
-    U::TV
+    σ::TV
     α::TV # Lower move limit
     β::TV # Upper move limit
     p0::TV
     q0::TV
     p::TM
     q::TM
+    ρ::TV
     r::TV
     r0::Base.RefValue{T}
     x::TV # Optimal value for x in dual iteration
+    x1::TV # Optimal value for x in previous outer iteration
     f_val::Base.RefValue{T} # Function value at current iteration
     g_val::TV # Inequality values at current iteration
     ∇f::TV # Function gradient at current iteration
     ∇g::TM # Inequality gradients [var, ineq] at current iteration
-end
-function show(io::IO, primal_data::PrimalData)
-    println("Primal data:")
-    for f in pd_fields
-        println("$f = $(primal_data.(f))")
-    end
 end
 
 struct XUpdater{TPD<:PrimalData}
@@ -30,11 +25,12 @@ function (xu::XUpdater)(λ)
     map!((j)->xu(λ, j), x, 1:length(x))
 end
 function (xu::XUpdater)(λ, j)
-    @unpack p0, p, q0, q, L, U, α, β = xu.pd
-    lj1 = p0[j] + matdot(λ, p, j)
-    lj2 = q0[j] + matdot(λ, q, j)
+    @unpack p0, p, q0, ρ, q, σ, x1, α, β = xu.pd
+    lj1 = p0[j] + matdot(λ, p, j) + dot(λ, ρ)*σ[j]/4
+    lj2 = q0[j] + matdot(λ, q, j) + dot(λ, ρ)*σ[j]/4
+
     αj, βj = α[j], β[j]
-    Lj, Uj = L[j], U[j]
+    Lj, Uj = minus_plus(x1[j], σ[j])
 
     Ujαj = Uj - αj
     αjLj = αj - Lj
@@ -70,25 +66,29 @@ function (gu::ConvexApproxGradUpdater{T})() where T
 end
 function (gu::ConvexApproxGradUpdater{T})(j::Int) where T
     pd = gu.pd
-    @unpack x, L, U, p0, q0, ∇f = pd
+    @unpack x, σ, x1, p0, q0, ∇f = pd
     xj = x[j]
-    xjLj = xj - L[j]
-    Ujxj = U[j] - xj
+    σj = σ[j]
+    Lj, Uj = minus_plus(xj, σj) # x == x1
     ∇fj = ∇f[j]
-    (p0j, q0j) = ifelse(∇fj > 0, (abs2(Ujxj)*∇fj, zero(T)), (zero(T), -abs2(xjLj)*∇fj))
+    abs2σj∇fj = abs2(σj)*∇fj
+    (p0j, q0j) = ifelse(∇fj > 0, (abs2σj∇fj, zero(T)), (zero(T), -abs2σj∇fj))
     p0[j], q0[j] = p0j, q0j
-    return p0[j]/Ujxj + q0[j]/xjLj
+    return (p0[j] + q0[j])/σj
 end
 function (gu::ConvexApproxGradUpdater{T})(ji::Tuple) where T
     j, i = ji
     pd = gu.pd
-    @unpack x, L, U, p, q, ∇g = pd
-    xjLj = x[j] - L[j]
-    Ujxj = U[j] - x[j]
+    @unpack x, σ, p, q, ρ, ∇g = pd
+    σj = σ[j]
+    xj = x[j]
+    Lj, Uj = minus_plus(xj, σj) # x == x1
     ∇gj = ∇g[j,i]
-    (pji, qji) = ifelse(∇gj > 0, (abs2(Ujxj)*∇gj, zero(T)), (zero(T), -abs2(xjLj)*∇gj))
+    abs2σj∇gj = abs2(σj)*∇gj
+    (pji, qji) = ifelse(∇gj > 0, (abs2σj∇gj, zero(T)), (zero(T), -abs2σj∇gj))
     p[j,i], q[j,i] = pji, qji
-    return pji/Ujxj + qji/xjLj
+    Δ = ρ[i]*σj/4
+    return (pji + qji + 2Δ)/σj
 end
 
 struct VariableBoundsUpdater{T, TV, TPD<:PrimalData{T, TV}, TModel<:MMAModel{T, TV}}
@@ -107,16 +107,17 @@ function (bu::VariableBoundsUpdater{T, TV})() where {T, TV}
 end
 function (bu::VariableBoundsUpdater{T})(j) where T
     @unpack m, pd, μ = bu
-    @unpack x, L, U = pd
-    αj = max(L[j] + μ * (x[j] - L[j]), min(m, j))
-    βj = min(U[j] - μ * (U[j] - x[j]), max(m, j))
+    @unpack x, σ = pd
+    xj = x[j]
+    Lj, Uj = minus_plus(xj, σ[j]) # x == x1 here
+    αj = max(Lj + μ * (xj - Lj), min(m, j))
+    βj = min(Uj - μ * (Uj - xj), max(m, j))
     return (αj, βj)
 end
 
 struct AsymptotesUpdater{T, TV<:AbstractVector{T}, TModel<:MMAModel{T,TV}}
     m::TModel
-    L::TV
-    U::TV
+    σ::TV
     x::TV
     x1::TV
     x2::TV
@@ -127,40 +128,37 @@ end
 
 struct InitialAsymptotesUpdater{T, TV, TModel<:MMAModel{T,TV}}
     m::TModel
-    x::TV
     s_init::T
 end
-Initial(au::AsymptotesUpdater) = InitialAsymptotesUpdater(au.m, au.x, au.s_init)
-function InitialAsymptotesUpdater(m::TModel, x::TV, s_init::T) where {T, TV<:AbstractVector{T}, TModel<:MMAModel{T, TV}}
-    InitialAsymptotesUpdater{T, TV, TModel}(m, x, s_init)
+Initial(au::AsymptotesUpdater) = InitialAsymptotesUpdater(au.m, au.s_init)
+function InitialAsymptotesUpdater(m::TModel, s_init::T) where {T, TV<:AbstractVector{T}, TModel<:MMAModel{T, TV}}
+    InitialAsymptotesUpdater{T, TV, TModel}(m, s_init)
 end
 
 function (au::AsymptotesUpdater{T, TV})(k::Iteration) where {T, TV}
-    @unpack L, U, m = au
-    s = StructOfArrays{NTuple{2,T}, 1, Tuple{TV,TV}}((L, U))
+    @unpack σ, m = au
     if k.i == 1 || k.i == 2
-        map!(Initial(au), s, 1:dim(m))
+        map!(Initial(au), σ, 1:dim(m))
     else
-        map!(au, s, 1:dim(m))
+        map!(au, σ, 1:dim(m))
     end
 end
 # Update move limits
 function (au::InitialAsymptotesUpdater)(j::Int)
-    @unpack m, x, s_init = au
-    d = s_init * (max(m, j) - min(m, j))
-    xj = x[j]
-    Lj, Uj = xj-d, xj+d
-    return (Lj, Uj)
+    @unpack m, s_init = au
+    return s_init * (max(m, j) - min(m, j))
 end
-function (au::AsymptotesUpdater)(j::Int)
-    @unpack x, x1, x2, s_incr, s_decr, L, U = au
+function (au::AsymptotesUpdater{T})(j::Int) where T
+    @unpack x, x1, x2, s_incr, s_decr, σ, m = au
+    σj = σ[j]
     xj = x[j]
     x1j = x1[j]
     x2j = x2[j]
-    x1jLj = x1j - L[j]
-    Ujx1j = U[j] - x1j
-    (Lj, Uj) = ifelse(xor(xj >= x1j, x1j >= x2j), 
-        (xj - x1jLj * s_decr, xj + Ujx1j * s_decr),
-        (xj - x1jLj * s_incr, xj + Ujx1j * s_incr))
-    return (Lj, Uj)
+    d = ifelse((xj == x1j || x1j == x2j), 
+        σj, ifelse(xor(xj > x1j, x1j > x2j), 
+        σj * s_decr, σj * s_incr))
+    diff = max(m, j) - min(m, j)
+    _min = T(0.01)*diff
+    _max = 10diff
+    return ifelse(d <= _min, _min, ifelse(d >= _max, _max, d))
 end

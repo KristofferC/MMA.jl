@@ -5,15 +5,21 @@ DualTermEvaluator(pd::TPD, λ::TV) where {T, TV, TPD<:PrimalData{T,TV}} = DualTe
 function (dte::DualTermEvaluator)(λ, ji::Tuple)
     j, i = ji
     @unpack pd = dte
-    @unpack p0, q0, p, q, U, L, x = pd
-    Ujxj = U[j] - x[j]
-    xjLj = x[j] - L[j]
-    return λ[i]*p[j,i]/Ujxj + λ[i]*q[j,i]/xjLj
+    @unpack p, q, ρ, σ, x1, x = pd
+    σj = σ[j]
+    Lj, Uj = minus_plus(x1[j], σj)
+    xj = x[j]
+    Ujxj = Uj - xj
+    xjLj = xj - Lj
+    Δ = ρ[i]*σj/4
+    return λ[i]*((p[j,i] + Δ)/Ujxj + (q[j,i] + Δ)/xjLj)
 end
 function (dte::DualTermEvaluator)(j::Int)
     pd = dte.pd
-    @unpack p0, q0, U, L, x = pd
-    return p0[j]/(U[j]-x[j]) + q0[j]/(x[j]-L[j])
+    @unpack p0, q0, σ, x1, x = pd
+    σj = σ[j]
+    Lj, Uj = minus_plus(x1[j], σj)
+    return p0[j]/(Uj-x[j]) + q0[j]/(x[j]-Lj)
 end
 struct DualObjVal{T, TV, TPD<:PrimalData}
     pd::TPD
@@ -39,10 +45,13 @@ end
 function (gte::DualGradTermEvaluator)(ji::Tuple)
     j, i = ji
     pd = gte.pd
-    @unpack p, q, U, L, x = pd
-    Ujxj = U[j] - x[j]
-    xjLj = x[j] - L[j]
-    return p[j,i]/Ujxj + q[j,i]/xjLj
+    @unpack p, q, ρ, σ, x1, x = pd
+    σj = σ[j]
+    Lj, Uj = minus_plus(x1[j], σj)
+    Ujxj = Uj - x[j]
+    xjLj = x[j] - Lj
+    Δ = ρ[i]*σj/4
+    return (p[j,i] + Δ)/Ujxj + (q[j,i] + Δ)/xjLj
 end
 struct DualObjGrad{TPD<:PrimalData}
     pd::TPD
@@ -58,6 +67,6 @@ function (dgrad::DualObjGrad{TPD})(∇φ::AbstractVector{T}, λ) where {T, TPD<:
     nv, nc = size(p)
     # Negate since we have a maximization problem
     map!((i)->(-r[i] - mapreduce(gte, +, T(0), Base.Iterators.product(1:nv, i:i))),
-        ∇φ, 1:nc)
+        ∇φ, 1:nc)    
     return ∇φ
 end

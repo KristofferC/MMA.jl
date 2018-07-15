@@ -20,13 +20,16 @@ include("utils.jl")
 include("model.jl")
 include("primal.jl")
 include("dual.jl")
+include("lift.jl")
 include("trace.jl")
 
 struct MMA87 <: AbstractOptimizer end
+struct MMA02 <: AbstractOptimizer end
 
 const μ = 0.1
+const ρmin = 1e-5
 
-function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_init=T(0.5), s_incr=T(1.05), s_decr=T(0.65)) where {T, TV}
+function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=MMA02(), suboptimizer=Optim.ConjugateGradient(); s_init=T(0.5), s_incr=T(1.2), s_decr=T(0.7)) where {T, TV}
     check_error(m, x0)
     n_i = length(constraints(m))
     n_j = dim(m)
@@ -34,11 +37,16 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
     TM = MatrixOf(TV)
 
     # Buffers for bounds and move limits
-    α, β, L, U = zerosof(TV, n_j), zerosof(TV, n_j), zerosof(TV, n_j), zerosof(TV, n_j)
+    α, β, σ = zerosof(TV, n_j), zerosof(TV, n_j), zerosof(TV, n_j)
 
     # Buffers for p0, pji, q0, qji
     p0, q0 = zerosof(TV, n_j), zerosof(TV, n_j)
     p, q = zerosof(TM, n_j, n_i), zerosof(TM, n_j, n_i)
+    if optimizer isa MMA87
+        ρ = zerosof(TV, n_i)    
+    else
+        ρ = onesof(TV, n_i)
+    end
     r = zerosof(TV, n_i)
     
     # Initial data and bounds for Optim to solve dual problem
@@ -49,6 +57,7 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
     # Objective gradient buffer
     ∇f_x = nansof(TV, length(x))
     g = zerosof(TV, n_i)
+    ng_approx = zerosof(TV, n_i)
     ∇g = zerosof(TM, n_j, n_i)
     
     f_x::T = eval_objective(m, x, ∇f_x)
@@ -56,10 +65,10 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
     f_x_previous = T(NaN)
 
     # Evaluate the constraints and their gradients
-    map!((i)->eval_constraint(m, i, x, (@view ∇g[:,i])), g, 1:n_i)
+    map!((i)->eval_constraint(m, i, x, @view(∇g[:,i])), g, 1:n_i)
 
     # Build a primal data struct storing all primal problem's info
-    primal_data = PrimalData(L, U, α, β, p0, q0, p, q, r, Ref(zero(T)), x, Ref(f_x), g, ∇f_x, ∇g)
+    primal_data = PrimalData(σ, α, β, p0, q0, p, q, ρ, r, Ref(zero(T)), x, x1, Ref(f_x), g, ∇f_x, ∇g)
     
     tr = OptimizationTrace{T, MMA87}()
     tracing = (m.store_trace || m.extended_trace || m.show_trace)
@@ -72,9 +81,11 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
     f_residual = T(Inf)
     gr_residual = T(Inf)
 
-    asymptotes_updater = AsymptotesUpdater(m, L, U, x, x1, x2, s_init, s_incr, s_decr)
-    variable_bounds_updater = VariableBoundsUpdater(primal_data, m, μ)
+    asymptotes_updater = AsymptotesUpdater(m, σ, x, x1, x2, s_init, s_incr, s_decr)
+    variable_bounds_updater = VariableBoundsUpdater(primal_data, m, T(μ))
     cvx_grad_updater = ConvexApproxGradUpdater(primal_data, m)
+    lift_updater = LiftUpdater(primal_data, ρ, g, ng_approx, n_j)
+    lift_resetter = LiftResetter(ρ, T(ρmin))
 
     x_updater = XUpdater(primal_data)
     dual_obj = DualObjVal(primal_data, λ, x_updater)
@@ -97,27 +108,38 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
         ## Computes values and updates gradients of convex approximations of objective and constraints
         cvx_grad_updater()
 
-        # Solve dual
-        d = OnceDifferentiable(dual_obj, dual_obj_grad, λ)
-        results = Optim.optimize(d, l, u, λ, Fminbox(optimizer), 
-            Optim.Options(x_tol=xtol(m), f_tol=ftol(m), g_tol=grtol(m)))
-        copy!(λ, results.minimizer::TV)
-
-        x_updater(λ)
-
-        # Evaluate the objective function and its gradient
-        f_x_previous, f_x = f_x, eval_objective(m, x, ∇f_x)
-        f_calls, g_calls = f_calls + 1, g_calls + 1
-        # Correct for functions whose gradients go to infinity at some points, e.g. √x
-        while mapreduce((x)->(isinf(x) || isnan(x)), or, false, ∇f_x)
-            map!((xs)->(T(0.01)*xs[1] + T(0.99)*xs[2]), x, zip(x1, x))
-            f_x = eval_objective(m, x, ∇f_x)
-            f_calls, g_calls = f_calls + 1, g_calls + 1
+        if optimizer isa MMA02
+            lift_resetter(Iteration(k))
         end
-        primal_data.f_val[] = f_x
+        lift = true
+        while lift
+            # Solve dual
+            λ .= 1
+            d = OnceDifferentiable(dual_obj, dual_obj_grad, λ)
+            results = Optim.optimize(d, l, u, λ, Fminbox(suboptimizer))
+            copy!(λ, results.minimizer)
+            dual_obj_grad(ng_approx, λ)
 
-        # Evaluate the constraints and their Jacobian
-        map!((i)->eval_constraint(m, i, x, (@view ∇g[:,i])), g, 1:n_i)
+            # Evaluate the objective function and its gradient
+            f_x_previous, f_x = f_x, eval_objective(m, x, ∇f_x)
+            f_calls, g_calls = f_calls + 1, g_calls + 1
+            # Correct for functions whose gradients go to infinity at some points, e.g. √x
+            while mapreduce((x)->(isinf(x) || isnan(x)), or, false, ∇f_x)
+                map!((x1,x)->(T(0.01)*x1 + T(0.99)*x), x, x1, x)
+                f_x = eval_objective(m, x, ∇f_x)
+                f_calls, g_calls = f_calls + 1, g_calls + 1
+            end
+            primal_data.f_val[] = f_x
+
+            # Evaluate the constraints and their Jacobian
+            map!((i)->eval_constraint(m, i, x, @view(∇g[:,i])), g, 1:n_i)
+
+            if optimizer isa MMA87
+                lift = false
+            else
+                lift = lift_updater()
+            end
+        end
 
         # Assess convergence
         x_converged, f_converged, gr_converged, 
@@ -132,7 +154,7 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=ConjugateGradient(); s_in
         end
     end
     h_calls = 0
-    return MultivariateOptimizationResults{MMA87, T, TV, typeof(x_residual), typeof(f_x), typeof(tr)}(MMA87(),
+    return MultivariateOptimizationResults{typeof(optimizer), T, TV, typeof(x_residual), typeof(f_x), typeof(tr)}(optimizer,
         x0,
         x,
         f_x,

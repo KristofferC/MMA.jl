@@ -9,6 +9,8 @@ infsof(::Type{TM}, n...) where TM = (TM(n...) .= Inf)
 ninfsof(::Type{TM}, n...) where TM = (TM(n...) .= -Inf)
 nansof(::Type{TM}, n...) where TM = (TM(n...) .= NaN)
 
+@inline minus_plus(a, b) = a - b, a + b
+
 @inline or(a,b) = a || b
 
 @inline function matdot(v::AbstractVector, A::AbstractMatrix, j::Int)
@@ -68,6 +70,3 @@ function assess_convergence(x::Array,
 
     return x_converged, f_converged, gr_converged, x_residual, f_residual, gr_residual, f_increased, converged
 end
-
-const pd_fields = [:L, :U, :α, :β, :p0, :q0, :p, :q,
-    :r, :r0, :x, :f_val, :g_val, :∇f, :∇g]
