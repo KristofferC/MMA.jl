@@ -2,9 +2,7 @@
 
 [![Build Status](https://travis-ci.org/KristofferC/MMA.jl.svg?branch=master)](https://travis-ci.org/KristofferC/MMA.jl)
 
-This module implements the MMA Algorithm in Julia as described by Krister Svanberg in [1].
-
-The code in this module was made for a course in Structural Optimization and should be seen as educational. For real use it is likely better to use a more mature code base, for example [NLopt.jl](https://github.com/JuliaOpt/NLopt.jl) which contain a more modern MMA algorithm than the one implemented here.
+This module implements the MMA Algorithm in Julia as described by Krister Svanberg in [1] and [2].
 
 ## Usage
 
@@ -45,7 +43,8 @@ ineq_constraint!(m, (x,grad) -> g(x,grad,-1,1))
 
 # Solve the problem
 x0 = [1.234, 2.345]
-results = optimize(m, x0)
+#results = optimize(m, x0, MMA.MMA02())  #-> Default
+results = optimize(m, x0, MMA.MMA87())
 
 # Print the results
 print(results)
@@ -82,6 +81,8 @@ println(results.trace)
 
 ## References
 [1] [The method of moving asymptotes - a new method for structural optimization](http://www.researchgate.net/publication/227631828_The_method_of_moving_asymptotesa_new_method_for_structural_optimization)
+
+[2] [A Class of Globally Convergent Optimization Methods Based on Conservative Convex Separable Approximation](https://epubs.siam.org/doi/10.1137/S1052623499362822)
 
 ### Authors
 Kristoffer Carlsson - kristoffer.carlsson@chalmers.se
