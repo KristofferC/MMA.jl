@@ -82,7 +82,7 @@ println(results.trace)
 ## References
 [1] [The method of moving asymptotes - a new method for structural optimization](http://www.researchgate.net/publication/227631828_The_method_of_moving_asymptotesa_new_method_for_structural_optimization)
 
-[2] [A Class of Globally Convergent Optimization Methods Based on Conservative Convex Separable Approximation](https://epubs.siam.org/doi/10.1137/S1052623499362822)
+[2] [A class of globally convergent optimization methods based on conservative convex separable approximations](https://epubs.siam.org/doi/10.1137/S1052623499362822)
 
 ### Authors
 Kristoffer Carlsson - kristoffer.carlsson@chalmers.se
