@@ -93,7 +93,8 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=MMA02(), suboptimizer=Opt
 
     # Iteraton counter
     k = 0
-    while !converged && k < m.max_iters
+    iter = 0
+    while !converged && iter < m.max_iters
         k += 1
         asymptotes_updater(Iteration(k))
 
@@ -112,11 +113,12 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=MMA02(), suboptimizer=Opt
             lift_resetter(Iteration(k))
         end
         lift = true
-        while lift
+        while lift && iter < m.max_iters
+            iter += 1
             # Solve dual
             λ .= 1
             d = OnceDifferentiable(dual_obj, dual_obj_grad, λ)
-            results = Optim.optimize(d, l, u, λ, Fminbox(suboptimizer))
+            results = Optim.optimize(d, l, u, λ, Fminbox(suboptimizer), Optim.Options(x_tol=xtol(m), f_tol=ftol(m), g_tol=grtol(m), outer_iterations = m.max_iters, iterations = m.max_iters))
             copy!(λ, results.minimizer)
             dual_obj_grad(ng_approx, λ)
 
@@ -147,19 +149,17 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=MMA02(), suboptimizer=Opt
         f_increased, converged = assess_convergence(x, x1, f_x, f_x_previous, ∇f_x, 
             xtol(m), ftol(m), grtol(m))
 
+        converged = converged && all((x)->(x<=ftol(m)), g)
         # Print some trace if flag is on
         @mmatrace()
-        if converged
-            break
-        end
     end
     h_calls = 0
     return MultivariateOptimizationResults{typeof(optimizer), T, TV, typeof(x_residual), typeof(f_x), typeof(tr)}(optimizer,
         x0,
         x,
         f_x,
-        k,
-        k == m.max_iters,
+        iter,
+        iter == m.max_iters,
         x_converged,
         xtol(m),
         x_residual,
