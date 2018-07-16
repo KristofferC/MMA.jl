@@ -3,7 +3,7 @@ using Base.Test
 
 import MMA: eval_constraint, eval_objective, dim
 
-function f(x::Vector, grad::Vector)
+function f(x::AbstractVector, grad::AbstractVector)
     if length(grad) != 0
         grad[1] = 0.0
         grad[2] = 0.5/sqrt(x[2])
@@ -11,7 +11,7 @@ function f(x::Vector, grad::Vector)
     sqrt(x[2])
 end
 
-function g(x::Vector, grad::Vector, a, b)
+function g(x::AbstractVector, grad::AbstractVector, a, b)
     if length(grad) != 0
         grad[1] = 3a * (a*x[1] + b)^2
         grad[2] = -1
@@ -28,8 +28,6 @@ box!(m, 2, 0.0, 10.0)
 ineq_constraint!(m, (x,grad) -> g(x,grad,2,0))
 ineq_constraint!(m, (x,grad) -> g(x,grad,-1,1))
 
-
-################3
 
 @test dim(m) == 2
 
@@ -60,6 +58,10 @@ let
     @test grad1 ≈ grad2
 end
 
-r = optimize(m, [1.234, 2.345])
+r = optimize(m, [1.234, 2.345], MMA.MMA02())
+@test abs(r.minimum - sqrt(8/27)) < 1e-6
+@test norm(r.minimizer - [1/3, 8/27]) < 1e-6
+
+r = optimize(m, [1.234, 2.345], MMA.MMA87())
 @test abs(r.minimum - sqrt(8/27)) < 1e-6
 @test norm(r.minimizer - [1/3, 8/27]) < 1e-6

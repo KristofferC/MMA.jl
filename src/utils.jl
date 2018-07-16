@@ -1,3 +1,24 @@
+struct Iteration
+    i::Int
+end
+
+MatrixOf(::Type{Vector{T}}) where T = Matrix{T}
+zerosof(::Type{TM}, n...) where TM = (TM(n...) .= 0)
+onesof(::Type{TM}, n...) where TM = (TM(n...) .= 1)
+infsof(::Type{TM}, n...) where TM = (TM(n...) .= Inf)
+ninfsof(::Type{TM}, n...) where TM = (TM(n...) .= -Inf)
+nansof(::Type{TM}, n...) where TM = (TM(n...) .= NaN)
+
+@inline minus_plus(a, b) = a - b, a + b
+
+@inline or(a,b) = a || b
+
+@inline function matdot(v::AbstractVector, A::AbstractMatrix, j::Int)
+    T = promote_type(eltype(v), eltype(A))
+    r = mapreduce((va)->(va[1]*va[2]), +, zero(T), zip(v, @view(A[j,:])))
+    return r
+end
+
 function check_error(m, x0)
     if length(x0) != dim(m)
         throw(ArgumentError("initial variable must have same length as number of design variables"))
@@ -24,7 +45,7 @@ function assess_convergence(x::Array,
 
     x_residual = maxdiff(x, x_previous)
     f_residual = abs(f_x - f_x_previous)
-    gr_residual = norm(vec(gr), Inf)
+    gr_residual = maximum(abs, gr)
 
     if x_residual < xtol
         x_converged = true
