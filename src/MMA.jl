@@ -29,7 +29,10 @@ struct MMA02 <: AbstractOptimizer end
 const μ = 0.1
 const ρmin = 1e-5
 
-function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=MMA02(), suboptimizer=Optim.ConjugateGradient(); s_init=T(0.5), s_incr=T(1.2), s_decr=T(0.7)) where {T, TV}
+default_dual_caps(::MMA87) = (0.9, 1.1)
+default_dual_caps(::MMA02) = (1., 100.)
+
+function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=MMA02(), suboptimizer=Optim.ConjugateGradient(); s_init=T(0.5), s_incr=T(1.2), s_decr=T(0.7), dual_caps=default_dual_caps(optimizer)) where {T, TV}
     check_error(m, x0)
     n_i = length(constraints(m))
     n_j = dim(m)
@@ -116,7 +119,7 @@ function optimize(m::MMAModel{T,TV}, x0::TV, optimizer=MMA02(), suboptimizer=Opt
         while lift && iter < m.max_iters
             iter += 1
             # Solve dual
-            λ .= 1
+            λ .= min.(dual_caps[2], max.(λ, dual_caps[1]))
             d = OnceDifferentiable(dual_obj, dual_obj_grad, λ)
             results = Optim.optimize(d, l, u, λ, Fminbox(suboptimizer), Optim.Options(x_tol=xtol(m), f_tol=ftol(m), g_tol=grtol(m), outer_iterations = m.max_iters, iterations = m.max_iters))
             copy!(λ, results.minimizer)
